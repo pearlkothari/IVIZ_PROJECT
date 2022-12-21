@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+
+    <title>IVIZ</title>
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">    
+    <style>
+        #loading {
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            position: fixed;
+            display: block;
+            opacity: 1;
+            background-color: #fff;
+            z-index: 99;
+            text-align: center;
+        }
+
+        #loading-image {
+            position: absolute;
+            top: 30%;
+            left: 45%;
+            z-index: 100;
+        }
+
+        header {
+            height: 70px;
+            padding-top: 40px;
+            z-index: 2;
+            box-shadow: 0 3px 6px 0 rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+        }
+
+        select{
+            display: block;
+            width: 200px;
+            color:#58595b;
+            font-weight: normal;
+            font-size: 16px;
+            font-family: "Arial", sans-serif;
+            padding:5px;
+            margin-top:5px;
+            margin-bottom: 10px;
+            background: #fff;       
+            box-shadow: 0px 0px 7px  rgba(0, 0, 0, 0.33);
+            outline: none;
+            border: none;
+            resize:none;
+        }
+
+        path:hover{
+            fill: #b6cb16;
+        }
+
+        rect:hover{
+            fill:#bbc71b;
+        }
+
+        .axis-grid line {
+            stroke: rgba(0, 0, 0, 0.33);
+        }
+
+        .axis-grid path:hover{
+            fill: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="loading" style="text-align: center;">
+        <p>Please Wait....</p>
+    </div>
+
+    <header>
+        <div style="text-align:center">
+            <nav class="navbar">
+                <h1 style="font-size: 30px;font-family:Poppins;">Rape cases for different years in India of specifics States/UTs</h1>
+                <h2 style="font-size: 20px;font-family:Poppins;">Submitted By - Pearl Kothari & Vaibhav Deepak Pradhan</h2>
+            </nav>
+        </div>
+    </header>
+    
+    <div style="text-align:center;margin-top:50px;">
+        <form id="yearForm">
+            <label for="year" style="font-size: 16px;font-family:Poppins;">Choose a year:</label><br>
+            <div style="display:flex;justify-content: center;">
+                <select id="year" name="year">
+                    <option value="2016">2016</option>
+                    <option value="2017">2017</option>
+                    <option value="2018">2018</option>
+                    <option value="2019">2019</option>
+                    <option value="2020">2020</option>
+                </select>
+            </div>
+            <input type="submit">
+        </form>
+    </div>
+
+    <div style="display: flex;margin-top:20px;">
+        <div style="text-align:start;">
+            <svg id="barChart" width = 900 height = 900 style="border: 2px solid black;">
+            </svg>
+        </div>
+        
+        <div>
+            <div style="text-align: center; border: 2px solid black;position:relative;">
+                <div id="legend2" style="position:absolute;right:10px;top:5px;font-family:Poppins;">Number of Rape Cases in 2021<br></div>
+                <svg id ="map2021" height = "445" width = "600"></svg>
+            </div>
+            <div style="text-align: center; border: 2px solid black;position:relative;">
+                <div id="legend1" style="position:absolute;right:10px;top:5px;font-family:Poppins;">Number of Rape Cases in 2016<br></div>
+                <svg id="previousMap" height="445" width="600"></svg>
+            </div>
+        </div>
+    </div>
+
+    <script src = "assets/js/d3.js"></script>
+
+    <script>
+        d3.select('#yearForm').on('submit',function(e){
+            e.preventDefault();
+            year = document.querySelector('#year').value;
+            showPercentChange();
+            d3.select('#legend1').html('Number of Rape Cases in ' + year + ' <br>');
+            createOldMap();
+        });
+    </script>
+
+    <script>
+        let year = 2016;
+        let previousMap = d3.select("#previousMap");
+        let previousData;
+
+        Promise.all([
+            d3.csv("assets/data/crimes_2016-2020.csv"),
+            d3.json("assets/data/states_india.geo.json"),
+        ]).then(showOldMap);
+        
+        function showOldMap(dataRead) {
+            previousData = dataRead;
+            createOldMap();
+        }
+
+        function createOldMap(){
+            let crimeInfo = previousData[0];
+            let mapInfo = previousData[1];
+
+            crimeInfo = crimeInfo.filter(function(d){
+                if (d['State/UT'] == "Total State (S)" || d['State/UT'] == "Total UT(S)" || d['State/UT'] == "Total (All India)") {
+                    return false;
+                }
+                return true;
+            });
+            
+            let dataIndex = {};
+        
+            for(let c of crimeInfo){
+                let state = c["State/UT"];
+                dataIndex[state] = +c[year];
+            }
+
+            // console.log(crimeInfo);
+
+            mapInfo.features = mapInfo.features.map(d=>{
+                let state = d.properties.st_nm;
+                if(state == "Jammu & Kashmir"){
+                    state = "Jammu and Kashmir";
+                }
+                let cases = dataIndex[state];
+                d.properties.Cases = cases;
+                return d;
+            });
+
+            let maxCases = d3.max(mapInfo.features, d => d.properties.Cases);
+            let midCases = d3.median(mapInfo.features, d => d.properties.Cases);
+
+            let columnScale = d3.scaleLinear()
+                        .domain([0, midCases, maxCases])
+                        .range(["#deebf7","#9ecae1","#3182bd"]);
+
+            let projection = d3.geoMercator()
+                            .scale(730)
+                            .translate([-800, 520]);
+
+            let path = d3.geoPath().projection(projection);
+
+            previousMap.selectAll("path").remove();
+
+            previousMap.selectAll("path").data(mapInfo.features)
+                .enter()
+                .append("path")
+                .attr("d", path)
+                .attr("stroke", "#3C0000")
+                .attr("fill", d => d.properties.Cases ? columnScale(d.properties.Cases) : "white")
+                .append('title')
+                .text(d => d.properties.st_nm + ": " + (d.properties.Cases ? d.properties.Cases : 'Not Available'));
+
+            let w = 300, h = 50;
+
+            let key = d3.select("#legend1")
+                        .append("svg")
+                        .attr("width", w)
+                        .attr("height", h);
+        
+            let legend = key.append("defs")
+                            .append("svg:linearGradient")
+                            .attr("id", "gradient1")
+                            .attr("x1", "0%")
+                            .attr("y1", "100%")
+                            .attr("x2", "100%")
+                            .attr("y2", "100%")
+                            .attr("spreadMethod", "pad").attr("data-style-padding", 20);
+
+            legend.append("stop")
+                    .attr("offset", "0%")
+                    .attr("stop-color", "#deebf7")
+                    .attr("stop-opacity", 1);
+
+            legend.append("stop")
+                    .attr("offset", "50%")
+                    .attr("stop-color", "#9ecae1")
+                    .attr("stop-opacity", 1);
+
+            legend.append("stop")
+                    .attr("offset", "100%")
+                    .attr("stop-color", "#3182bd")
+                    .attr("stop-opacity", 1);
+
+            key.append("rect")
+                .attr("width", w)
+                .attr("height", h - 30)
+                .style("fill", "url(#gradient1)")
+                .attr("transform", "translate(0,10)");
+
+            let y = d3.scaleLinear()
+                        .range([0, 300])
+                        .domain([0, maxCases]);
+
+            let yAxis = d3.axisBottom()
+                            .scale(y)
+                            .ticks(5);
+
+            d3.select('#legendTicks').remove();
+            key.append("g")
+                .attr("transform", "translate(1,30)")
+                .call(yAxis)
+                .attr('id','legendTicks');
+        }
+    </script>
+
+    <script>
+        let map2021 = d3.select("#map2021");
+
+        Promise.all([
+            d3.csv("assets/data/crimes_2021.csv"),
+            d3.json("assets/data/states_india.geo.json")
+        ]).then(show2021Map);
+
+        function show2021Map(dataRead) {
+            let crimeInfo = dataRead[0];
+            let mapInfo = dataRead[1];
+
+            // console.log(crimeInfo);
+            let dataIndex = {};
+
+            for(let c of crimeInfo){
+                let state = c['State/UT Col. (2)'];
+                dataIndex[state] = +c['Rape (Total) (Sec.376 IPC) - Col. (29)'];
+            }
+
+            // console.log(dataIndex)
+
+            mapInfo.features = mapInfo.features.map(d => {
+                let state = d.properties.st_nm;
+                if(state == "Jammu & Kashmir"){
+                    state = "Jammu and Kashmir";
+                }
+                let cases = dataIndex[state];
+                d.properties.Cases = cases;
+                return d;
+            });
+            
+            let maxCases = d3.max(mapInfo.features, d => d.properties.Cases);
+            let midCases = d3.median(mapInfo.features, d => d.properties.Cases);
+
+            let columnScale = d3.scaleLinear()
+                    .domain([0, midCases, maxCases])
+                    .range(["#fee0d2","#fc9272","#de2d26"]);
+
+            let myProjection = d3.geoMercator()
+                                    .scale(730)
+                                    .translate([-800, 520]);
+
+            let geoPath = d3.geoPath().projection(myProjection);
+
+            map2021.selectAll("path")
+                .data(mapInfo.features)
+                .enter()
+                .append("path")
+                .attr("d",d => geoPath(d))
+                .attr("stroke","#3C0000")  
+                .attr("fill",d => d.properties.Cases ? columnScale(d.properties.Cases) : "white")
+                .append('title')
+                .text(d => d.properties.st_nm + ": " + (d.properties.Cases ? d.properties.Cases : 'Not Available'));
+
+            let w = 300, h = 50;
+
+            let key = d3.select("#legend2")
+                            .append("svg")
+                            .attr("width", w)
+                            .attr("height", h);
+        
+            let legend = key.append("defs")
+                                .append("svg:linearGradient")
+                                .attr("id", "gradient")
+                                .attr("x1", "0%")
+                                .attr("y1", "100%")
+                                .attr("x2", "100%")
+                                .attr("y2", "100%")
+                                .attr("spreadMethod", "pad").attr("data-style-padding", 20);
+
+                                
+            legend.append("stop")
+                    .attr("offset", "0%")
+                    .attr("stop-color", "#fee0d2")
+                    .attr("stop-opacity", 1);
+
+            legend.append("stop")
+                    .attr("offset", "50%")
+                    .attr("stop-color", "#fc9272")
+                    .attr("stop-opacity", 1);
+
+            legend.append("stop")
+                    .attr("offset", "100%")
+                    .attr("stop-color", "#de2d26")
+                    .attr("stop-opacity", 1);
+
+            key.append("rect")
+                .attr("width", w)
+                .attr("height", h - 30)
+                .style("fill", "url(#gradient)")
+                .attr("transform", "translate(0,10)");
+
+            let y = d3.scaleLinear()
+                        .range([0, 300])
+                        .domain([0, maxCases]);
+
+            let yAxis = d3.axisBottom()
+                            .scale(y)
+                            .ticks(5);
+
+            key.append("g")
+                .attr("transform", "translate(1,30)")
+                .call(yAxis);
+
+            d3.select('#loading').style('display','none');
+        }
+    </script>
+
+    <script>
+        let filteredData2021;
+        let filteredDataCurrent;
+        let states;
+        let yScale;
+        let barChart = d3.select('#barChart');
+
+        Promise.all([
+            d3.csv("assets/data/crimes_2016-2020.csv"),
+            d3.csv("assets/data/crimes_2021.csv")
+        ]).then(showData);
+        
+        function showPercentChange(){
+            let crimes = {};
+
+            for(let current of filteredData2021){
+                let state = current['State/UT Col. (2)'];
+                crimes[state] = +current['Rape (Total) (Sec.376 IPC) - Col. (29)'];
+            }
+
+            for(let current of filteredDataCurrent){
+                let state = current['STATE/UT'];
+                if(current[year] == 0) {
+                    crimes[state] = crimes[state]*100;
+                }else if(current[year]=='NAN'){
+                    crimes[state] = 0;
+                }
+                else{
+                    crimes[state] = +((((crimes[state] - +current[year])/+current[year])*100).toFixed(2));
+                }
+            }
+
+            let maxValue = Number.MIN_VALUE;
+
+            for(let current in crimes){
+                if(maxValue < crimes[current]) {
+                    maxValue = crimes[current];
+                }
+            }
+
+            let xScale = d3.scaleLinear()
+                                .domain([-1 * maxValue, maxValue])
+                                .range([-300, 300]);
+
+            let xAxis = d3.axisTop(xScale);
+            d3.select('#xAxis').remove();
+            barChart.append('g').call(xAxis).style("transform","translate(480px,100px)").attr("id", "xAxis");
+
+            d3.select('#xAxisGrid').remove();
+            barChart.append('g')
+                    .attr('class', 'axis-grid')
+                    .style("transform","translate(480px,100px)")
+                    .call(d3.axisBottom(xScale).tickSize(700).tickFormat(''))
+                    .attr("id", "xAxisGrid")
+                    .select('path')
+                    .style('stroke','none');
+
+            d3.select('#yAxis2').remove();
+            barChart.append('g').call(d3.axisRight(yScale)).style("transform","translate(480px,100px)").attr("id", "yAxis2");
+            d3.select("#yAxis2").selectAll("g").remove();
+            
+            
+            d3.select('#yAxis2').selectAll('rect')
+                .data(states)
+                .enter()
+                .append('rect')
+                .attr('height', 2 * yScale.bandwidth())
+                .style('transform', d => xScale(crimes[d]) < 0 ? 'translate(' + xScale(crimes[d]) + 'px, 0px' : 'none')
+                .attr("fill", d => crimes[d] > 0 ? '#3182bd' : '#4984b8')
+                .attr('y', d => yScale(d))
+                .attr('width', d => xScale(crimes[d]) > 0 ? xScale(crimes[d]) : -1*xScale(crimes[d]))
+                .append('title')
+                .text(d =>d + ': ' + crimes[d] + "%");
+
+            d3.select('#x-label').remove();
+
+            barChart.append("text")
+                .attr('id', 'x-label')
+                .attr("text-anchor", "middle")
+                .attr("x", 480)
+                .attr("y", 40)
+                .text("Percent increase in rape cases between " + year +" and 2020")
+                .style('font-size','20px')
+                .style('font-family', 'Poppins');
+
+            barChart.append("text")
+                .attr("text-anchor", "end")
+                .attr("x", -350)
+                .attr("y", 60)
+                .attr("transform", "rotate(-90)")
+                .text("States/UT of India")
+                .style('font-size','20px')
+                .style('font-family', 'Poppins');               
+        }
+        
+        function showData(dataRead){
+            
+            filteredDataCurrent = dataRead[0].filter(function(d) {
+                if (d['State/UT'] == "Total State (S)" || d['State/UT'] == "Total UT(S)" || d['State/UT'] == "Total (All India)") {
+                    return false;
+                }
+                return true;
+            });
+
+            filteredData2021 = dataRead[1].filter(function(d){
+                if (d['State/UT Col. (2)'] != "Total UT(S)" && d['State/UT Col. (2)'] != "Total State(S)" && d['State/UT Col. (2)']!="Total All India") {
+                    return true;
+                }
+                return false;
+            });
+
+            states = d3.map(filteredData2021, d => d['State/UT Col. (2)']);
+
+            yScale = d3.scaleBand()
+                            .domain(states)
+                            .range([700, 0])
+                            .padding(0.6);
+
+            let yAxis1 = d3.axisLeft(yScale);
+            barChart.append('g').call(yAxis1).style("transform","translate(180px,100px)").attr("id", "yAxis1");
+
+            showPercentChange();
+        }
+    </script>
+</body>
+
+</html>
